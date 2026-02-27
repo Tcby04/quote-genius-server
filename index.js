@@ -23,8 +23,8 @@ app.post('/webhook', (req, res) => {
     const sessionId = session.id;
     
     if (customerEmail) {
-      // Use session ID as the code (cleaned up)
-      const code = sessionId.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 8);
+      // Use session ID, just remove cs_test_ or cs_live_ prefix and take last 8 chars
+      let code = sessionId.replace('cs_test_', '').replace('cs_live_', '').substring(0, 8).toUpperCase();
       codes[code] = { 
         created: new Date().toISOString(), 
         used: false,
