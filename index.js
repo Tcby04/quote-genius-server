@@ -76,4 +76,8 @@ app.get('/admin/codes', (req, res) => {
   res.json(codes);
 });
 
-module.exports = app;
+// Listen on Render's assigned port
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Quote Genius server running on port ${PORT}`);
+});
