@@ -1,0 +1,100 @@
+const express = require('express');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+app.use(express.json());
+app.use(express.raw({ type: 'application/json' }));
+
+const CODES_FILE = path.join(__dirname, 'codes.json');
+
+function loadCodes() {
+  try {
+    return JSON.parse(fs.readFileSync(CODES_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function saveCodes(codes) {
+  fs.writeFileSync(CODES_FILE, JSON.stringify(codes, null, 2));
+}
+
+function generateCode() {
+  return crypto.randomBytes(4).toString('hex').toUpperCase();
+}
+
+// Stripe webhook
+app.post('/webhook', (req, res) => {
+  const event = req.body;
+  
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const customerEmail = session.customer_details?.email;
+    const customerName = session.customer_details?.name;
+    
+    if (customerEmail) {
+      const code = generateCode();
+      const codes = loadCodes();
+      codes[code] = { 
+        created: new Date().toISOString(), 
+        used: false,
+        email: customerEmail,
+        name: customerName,
+        stripeSessionId: session.id
+      };
+      saveCodes(codes);
+      
+      console.log(`New purchase! Code: ${code}, Email: ${customerEmail}`);
+    }
+  }
+  
+  res.json({ received: true });
+});
+
+// Create unlock code (admin)
+app.post('/admin/create-code', (req, res) => {
+  const code = generateCode();
+  const codes = loadCodes();
+  codes[code] = { created: new Date().toISOString(), used: false, manual: true };
+  saveCodes(codes);
+  res.json({ code });
+});
+
+// Validate code
+app.post('/validate', (req, res) => {
+  const { code } = req.body;
+  const codes = loadCodes();
+  
+  if (codes[code] && !codes[code].used) {
+    codes[code].used = true;
+    codes[code].usedAt = new Date().toISOString();
+    saveCodes(codes);
+    res.json({ valid: true });
+  } else {
+    res.json({ valid: false });
+  }
+});
+
+// Get code by Stripe session
+app.get('/get-code', (req, res) => {
+  const sessionId = req.query.session;
+  const codes = loadCodes();
+  
+  for (const [code, data] of Object.entries(codes)) {
+    if (data.stripeSessionId === sessionId) {
+      return res.json({ code: code });
+    }
+  }
+  
+  res.json({ error: 'not found' });
+});
+
+// List codes (admin)
+app.get('/admin/codes', (req, res) => {
+  const codes = loadCodes();
+  res.json(codes);
+});
+
+module.exports = app;
