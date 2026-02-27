@@ -47,15 +47,25 @@ app.post('/admin/create-code', (req, res) => {
 
 // Validate code
 app.post('/validate', (req, res) => {
-  const { code } = req.body;
+  const code = (req.body.code || '').toUpperCase();
   
+  // First check exact code match
   if (codes[code] && !codes[code].used) {
     codes[code].used = true;
     codes[code].usedAt = new Date().toISOString();
-    res.json({ valid: true });
-  } else {
-    res.json({ valid: false });
+    return res.json({ valid: true });
   }
+  
+  // Also check if it's a session ID (first 8 chars)
+  for (const [storedCode, data] of Object.entries(codes)) {
+    if (data.stripeSessionId && data.stripeSessionId.substring(0, 8).toUpperCase() === code && !data.used) {
+      codes[storedCode].used = true;
+      codes[storedCode].usedAt = new Date().toISOString();
+      return res.json({ valid: true });
+    }
+  }
+  
+  res.json({ valid: false });
 });
 
 // Get code by Stripe session
