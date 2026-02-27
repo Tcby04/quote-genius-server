@@ -20,15 +20,17 @@ app.post('/webhook', (req, res) => {
     const session = event.data.object;
     const customerEmail = session.customer_details?.email;
     const customerName = session.customer_details?.name;
+    const sessionId = session.id;
     
     if (customerEmail) {
-      const code = generateCode();
+      // Use session ID as the code (cleaned up)
+      const code = sessionId.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 8);
       codes[code] = { 
         created: new Date().toISOString(), 
         used: false,
         email: customerEmail,
         name: customerName,
-        stripeSessionId: session.id
+        stripeSessionId: sessionId
       };
       
       console.log(`New purchase! Code: ${code}, Email: ${customerEmail}`);
