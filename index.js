@@ -12,6 +12,9 @@ function generateCode() {
   return crypto.randomBytes(4).toString('hex').toUpperCase();
 }
 
+// Supported products
+const PRODUCTS = ['quote-genius', 'linkpage', 'invoice-genius', 'lead-pipe', 'menu-maker', 'pixel-squeeze', 'foodtruckiq'];
+
 // Stripe webhook
 app.post('/webhook', (req, res) => {
   const event = req.body;
@@ -22,10 +25,12 @@ app.post('/webhook', (req, res) => {
     const customerName = session.customer_details?.name;
     const sessionId = session.id;
     
-    // Determine product from line items
-    const productId = session.line_items?.data?.[0]?.price?.product;
+    // Get product from metadata or line items
+    const productId = session.metadata?.product || session.line_items?.data?.[0]?.price?.product || 'unknown';
+    const productName = Object.entries(PRODUCTS).find(([k, v]) => v === productId || session.line_items?.data?.[0]?.price?.product === k)?.[1] || productId;
     
-    if (customerEmail) {
+    if (customerEmail || sessionId) {
+      // Generate unique code from session ID
       let code = sessionId.replace('cs_test_', '').replace('cs_live_', '').substring(0, 8).toUpperCase();
       codes[code] = { 
         created: new Date().toISOString(), 
@@ -33,7 +38,7 @@ app.post('/webhook', (req, res) => {
         email: customerEmail,
         name: customerName,
         stripeSessionId: sessionId,
-        product: productId || 'unknown'
+        product: productId
       };
       
       console.log(`New purchase! Code: ${code}, Email: ${customerEmail}, Product: ${productId}`);
@@ -123,6 +128,38 @@ app.post('/validate', (req, res) => {
 // Get code by Stripe session
 app.get('/get-code', (req, res) => {
   const sessionId = req.query.session;
+  const product = req.query.product;
+  
+  if (!sessionId) {
+    return res.json({ error: 'no session' });
+  }
+  
+  // Try to find by session ID prefix
+  const sessionPrefix = sessionId.replace('cs_test_', '').replace('cs_live_', '').substring(0, 8).toUpperCase();
+  
+  for (const [code, data] of Object.entries(codes)) {
+    if (data.stripeSessionId && data.stripeSessionId.includes(sessionId.substring(0, 20))) {
+      if (product && data.product !== product && data.product !== 'unknown') {
+        continue;
+      }
+      return res.json({ code: code, product: data.product, email: data.email });
+    }
+  }
+  
+  // If not found, create one (new purchase)
+  const newCode = sessionPrefix;
+  codes[newCode] = {
+    created: new Date().toISOString(),
+    used: false,
+    stripeSessionId: sessionId,
+    product: product || 'unknown'
+  };
+  res.json({ code: newCode, product: product });
+});
+
+// Get code by exact session match
+app.get('/code-by-session', (req, res) => {
+  const sessionId = req.query.session_id;
   const product = req.query.product;
   
   for (const [code, data] of Object.entries(codes)) {
