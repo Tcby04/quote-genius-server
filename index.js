@@ -1,25 +1,12 @@
 const express = require('express');
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
 app.use(express.json());
 app.use(express.raw({ type: 'application/json' }));
 
-const CODES_FILE = path.join(__dirname, 'codes.json');
-
-function loadCodes() {
-  try {
-    return JSON.parse(fs.readFileSync(CODES_FILE, 'utf8'));
-  } catch {
-    return {};
-  }
-}
-
-function saveCodes(codes) {
-  fs.writeFileSync(CODES_FILE, JSON.stringify(codes, null, 2));
-}
+// In-memory storage (resets on restart - OK for now)
+let codes = {};
 
 function generateCode() {
   return crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -36,7 +23,6 @@ app.post('/webhook', (req, res) => {
     
     if (customerEmail) {
       const code = generateCode();
-      const codes = loadCodes();
       codes[code] = { 
         created: new Date().toISOString(), 
         used: false,
@@ -44,7 +30,6 @@ app.post('/webhook', (req, res) => {
         name: customerName,
         stripeSessionId: session.id
       };
-      saveCodes(codes);
       
       console.log(`New purchase! Code: ${code}, Email: ${customerEmail}`);
     }
@@ -56,21 +41,17 @@ app.post('/webhook', (req, res) => {
 // Create unlock code (admin)
 app.post('/admin/create-code', (req, res) => {
   const code = generateCode();
-  const codes = loadCodes();
   codes[code] = { created: new Date().toISOString(), used: false, manual: true };
-  saveCodes(codes);
   res.json({ code });
 });
 
 // Validate code
 app.post('/validate', (req, res) => {
   const { code } = req.body;
-  const codes = loadCodes();
   
   if (codes[code] && !codes[code].used) {
     codes[code].used = true;
     codes[code].usedAt = new Date().toISOString();
-    saveCodes(codes);
     res.json({ valid: true });
   } else {
     res.json({ valid: false });
@@ -80,7 +61,6 @@ app.post('/validate', (req, res) => {
 // Get code by Stripe session
 app.get('/get-code', (req, res) => {
   const sessionId = req.query.session;
-  const codes = loadCodes();
   
   for (const [code, data] of Object.entries(codes)) {
     if (data.stripeSessionId === sessionId) {
@@ -93,7 +73,6 @@ app.get('/get-code', (req, res) => {
 
 // List codes (admin)
 app.get('/admin/codes', (req, res) => {
-  const codes = loadCodes();
   res.json(codes);
 });
 
