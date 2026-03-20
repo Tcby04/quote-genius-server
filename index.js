@@ -184,6 +184,11 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', products: ['quote-genius', 'linkpage'] });
 });
 
+// Dedicated health endpoint for cron/Render health checks
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy' });
+});
+
 // Listen on Render's assigned port
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
